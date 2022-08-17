@@ -175,6 +175,7 @@ EnzoConfig::EnzoConfig() throw ()
   initial_turbulence_temperature(0.0),
   // EnzoInitialIsolatedGalaxy
   initial_IG_analytic_velocity(false),
+  initial_IG_equilibrium_disk(false),
   initial_IG_disk_mass(42.9661),            // Gas disk mass in code units
   initial_IG_disk_metal_fraction(1.0E-10),         // Gas disk metal fraction
   initial_IG_disk_temperature(1e4),         // Gas disk temperature in K
@@ -547,6 +548,7 @@ void EnzoConfig::pup (PUP::er &p)
   PUParray(p, initial_IG_center_position,3);
   PUParray(p, initial_IG_bfield,3);
   p | initial_IG_analytic_velocity;
+  p | initial_IG_equilibrium_disk;
   p | initial_IG_disk_mass;
   p | initial_IG_disk_metal_fraction;
   p | initial_IG_disk_temperature;
@@ -1300,6 +1302,8 @@ void EnzoConfig::read_initial_isolated_galaxy_(Parameters * p)
     ("Initial:isolated_galaxy:stellar_bulge", false);
   initial_IG_analytic_velocity = p->value_logical
     ("Initial:isolated_galaxy:analytic_velocity", false);
+  initial_IG_equilibrium_disk = p->value_logical
+    ("Initial:isolated_galaxy:equilibrium_disk", false);
   initial_IG_include_recent_SF = p->value_logical
     ("Initial:isolated_galaxy:include_recent_SF", false);
   initial_IG_recent_SF_start = p->value_float

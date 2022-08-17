@@ -233,6 +233,7 @@ public: // interface
       //       are they overwritten by the read-in (even when not found in param file)?
       // EnzoInitialIsolatedGalaxy
       initial_IG_analytic_velocity(false),
+      initial_IG_equilibrium_disk(false),
       initial_IG_disk_mass(42.9661),            // Gas disk mass in code units
       initial_IG_disk_metal_fraction(1.0E-10),         // Gas disk metal fraction
       initial_IG_disk_temperature(1e4),         // Gas disk temperature in K
@@ -754,6 +755,7 @@ public: // attributes
 
   /// EnzoInitialIsolatedGalaxy
   bool                       initial_IG_analytic_velocity;
+  bool                       initial_IG_equilibrium_disk;
   bool                       initial_IG_include_recent_SF;
   bool                       initial_IG_live_dm_halo;
   bool                       initial_IG_stellar_bulge;

@@ -121,6 +121,7 @@ public: // interface
                            Particle * particle);
 
   void InitializeExponentialGasDistribution(Block * block);
+  void InitializeEquilibriumGasDistribution(Block * block);
   void InitializeGasFromParticles(Block * block);
 
   void ReadParticles(void);
@@ -145,9 +146,25 @@ public: // interface
                     const double zpos,
                     const double dx);
 
+  /// Read in equilibrium disk data
+  void ReadInEquilibriumDiskData(void);
+
+  /// Interpolate equilibrium density data
+  double InterpolateEquilibriumDensityTable(double r_cyl, double z);
+
   /// Destructor
   virtual ~EnzoInitialIsolatedGalaxy(void) throw() {
     if (particleIcPosition) freeParticles();
+
+    /*
+     allocatable table
+    if (equilibrium_disk_)
+      for (i = 0; i < gas_disk_nr; i++) {
+        if (gas_disk_log_rho[i] != NULL) 
+	  delete[] gas_disk_log_rho[i];
+	delete[] gas_disk_log_rho;
+      }
+    */
   };
 
 private: // attributes
@@ -174,6 +191,7 @@ private: // attributes
   double tiny_number_;
 
   bool analytic_velocity_;
+  bool equilibrium_disk_;
 
   bool use_gas_particles_;
   bool live_dm_halo_;
@@ -181,9 +199,19 @@ private: // attributes
   bool stellar_disk_;
 
   const int VCIRC_TABLE_LENGTH = 10000;
-
+  
   double vcirc_radius[10000];
   double vcirc_velocity[10000];
+
+  const int DISK_ZONES_MAX = 500;
+
+  int gas_disk_nr, gas_disk_nz;
+  double gas_disk_zones_r[500];
+  double gas_disk_zones_z[500];
+
+  double gas_disk_log_rho[500][500];
+  //TODO: optimize for blocks
+  //enzo_float ** gas_disk_log_rho;
 
   bool include_recent_SF;
   double recent_SF_start;
