@@ -1,6 +1,8 @@
 #ifndef ENZO_ENZO_INITIAL_ISOLATED_GALAXY_HPP
 #define ENZO_ENZO_INITIAL_ISOLATED_GALAXY_HPP
 
+#define MAX_DISK_ZONES 500
+
 class EnzoInitialIsolatedGalaxy : public Initial {
 
 private:
@@ -149,8 +151,9 @@ public: // interface
   /// Read in equilibrium disk data
   void ReadInEquilibriumDiskData(void);
 
-  /// Interpolate equilibrium density data
+  /// Interpolate equilibrium disk data
   double InterpolateEquilibriumDensityTable(double r_cyl, double z);
+  double InterpolateEquilibriumVcircTable(double r_cyl, double z);
 
   /// Destructor
   virtual ~EnzoInitialIsolatedGalaxy(void) throw() {
@@ -203,13 +206,14 @@ private: // attributes
   double vcirc_radius[10000];
   double vcirc_velocity[10000];
 
-  const int DISK_ZONES_MAX = 500;
+  //const int DISK_ZONES_MAX = 500;
 
   int gas_disk_nr, gas_disk_nz;
-  double gas_disk_zones_r[500];
-  double gas_disk_zones_z[500];
+  double gas_disk_zones_r[MAX_DISK_ZONES];
+  double gas_disk_zones_z[MAX_DISK_ZONES];
 
-  double gas_disk_log_rho[500][500];
+  double gas_disk_log_rho[MAX_DISK_ZONES][MAX_DISK_ZONES];
+  double gas_disk_vcirc[MAX_DISK_ZONES][MAX_DISK_ZONES];
   //TODO: optimize for blocks
   //enzo_float ** gas_disk_log_rho;
 

@@ -33,7 +33,7 @@
 
 //----------------------------------------------------------------------
 #define DEBUG_PERFORMANCE
-#define DEBUG_DISK
+//#define DEBUG_DISK3
 //----------------------------------------------------------------------
 
 // convenience flag when initializing using MakeDiskGalaxy gas particles
@@ -459,6 +459,7 @@ void EnzoInitialIsolatedGalaxy::InitializeExponentialGasDistribution(Block * blo
           d[i]   = disk_density;
 
           double vcirc = 0.0;
+          // thin-disk approximation (vcirc depends on r_cyl)
           if (this->analytic_velocity_){
             double rcore_cgs = enzo_config->method_background_acceleration_core_radius * enzo_constants::kpc_cm;
             double rvir_cgs = enzo_config->method_background_acceleration_DM_mass_radius * enzo_constants::kpc_cm;
@@ -656,23 +657,7 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
           // in the disk, set the disk properties
           d[i]   = disk_density;
 
-          double vcirc = 0.0;
-          if (this->analytic_velocity_){
-            double rcore_cgs = enzo_config->method_background_acceleration_core_radius * enzo_constants::kpc_cm;
-            double rvir_cgs = enzo_config->method_background_acceleration_DM_mass_radius * enzo_constants::kpc_cm;
-            double Mvir_cgs = enzo_config->method_background_acceleration_DM_mass * enzo_constants::mass_solar;
-            ASSERT1("Enzo::InitialIsolatedGalaxy", "DM halo mass (=%e g) must be positive and in units of solar masses", Mvir_cgs, (Mvir_cgs > 0));
-
-            double conc = rvir_cgs  / rcore_cgs;
-            double   rx = r_cyl / rvir_cgs;
-
-            vcirc = (std::log(1.0 + conc*rx) - (conc*rx)/(1.0+conc*rx))/
-                      (std::log(1.0 + conc) - (conc / (1.0 + conc))) / rx;
-            vcirc = std::sqrt(vcirc * enzo_constants::grav_constant * Mvir_cgs / rvir_cgs);
-
-          } else {
-            vcirc = this->InterpolateVcircTable(r_cyl);
-          }
+          double vcirc = this->InterpolateEquilibriumVcircTable(r_cyl/scale_length_cgs, z/scale_height_cgs);
 
           /* Assume counter-clockwise rotation */
           v3[0][i] = -(vcirc*(y/r_cyl))/enzo_units->velocity();
@@ -1256,8 +1241,7 @@ void EnzoInitialIsolatedGalaxy::ReadInVcircData(void)
 
   // we do not need this file if initializing with gas output
   // or analytic circular velocity curve
-  //if (this->equilibrium_disk_ || this->use_gas_particles_ || 
-  if (this->use_gas_particles_ || 
+  if (this->equilibrium_disk_ || this->use_gas_particles_ || 
       this->analytic_velocity_) return;
 
   //
@@ -1382,13 +1366,13 @@ void EnzoInitialIsolatedGalaxy::ReadInEquilibriumDiskData(void)
          "Disk data file failed to open",
          inFile.is_open());
 
-  double r, z, rho;
+  double r, z, rho, vcirc;
   double r_prev = -1.0;
 
   int i = 0; 
   int j = 0;
 
-  while(inFile >> r >> z >> rho)
+  while(inFile >> r >> z >> rho >> vcirc)
   {
     if (r > r_prev) {
       // record radial zones if midplane (z = 0)
@@ -1401,12 +1385,12 @@ void EnzoInitialIsolatedGalaxy::ReadInEquilibriumDiskData(void)
       this->gas_disk_zones_z[j++] = z;
     }
 
-    // density scaled by rho_zero
-    this->gas_disk_log_rho[i][j] = log(rho);
+    this->gas_disk_log_rho[i][j] = log(rho); // density scaled by rho_zero
+    this->gas_disk_vcirc[i][j] = 1e2*vcirc; // to cgs
 
   #ifdef DEBUG_DISK2
-    CkPrintf("InitialIsolatedGalaxy -- i=%d, r=%f, j=%d, z=%f, %f\n",
-	     i, this->gas_disk_zones_r[i], j, z, this->gas_disk_log_rho[i][j]);
+    CkPrintf("InitialIsolatedGalaxy -- i=%d, r=%f, j=%d, z=%f, %f, %e\n",
+	     i, this->gas_disk_zones_r[i], j, z, this->gas_disk_log_rho[i][j], this->gas_disk_vcirc[i][j]);
   #endif
 
     i++;
@@ -1416,16 +1400,16 @@ void EnzoInitialIsolatedGalaxy::ReadInEquilibriumDiskData(void)
 
   inFile.close();
 
-  #ifdef DEBUG_DISK
+  #ifdef DEBUG_DISK2
     CkPrintf("InitialIsolatedGalaxy -- number of zones n_r=%d, n_z=%d\n", this->gas_disk_nr, this->gas_disk_nz);
   #endif
 
   ASSERT("EnzoInitialIsolatedGalaxy",
 	 "Too many zones in disk data file",
-	 this->gas_disk_nr <= this->DISK_ZONES_MAX && 
-	 this->gas_disk_nz <= this->DISK_ZONES_MAX);
+	 this->gas_disk_nr <= MAX_DISK_ZONES && 
+	 this->gas_disk_nz <= MAX_DISK_ZONES);
 
-  #ifdef DEBUG_DISK 
+  #ifdef DEBUG_DISK2
     double dr, dz;
   
     dr = this->gas_disk_zones_r[1] - this->gas_disk_zones_r[0];
@@ -1462,7 +1446,7 @@ double EnzoInitialIsolatedGalaxy::InterpolateEquilibriumDensityTable(double r_cy
 	       w_r       * w_z        * this->gas_disk_log_rho[i+1][j+1]);
 
   #ifdef DEBUG_DISK3
-    CkPrintf("InitialIsolatedGalaxy -- r_cyl=%e, i=%d, w_r=%f, z=%e, j=%d, w_z=%f, %e\n",
+    CkPrintf("InitialIsolatedGalaxy -- r_cyl=%e, i=%d, w_r=%f, z=%e, j=%d, w_z=%f, rho=%e\n",
 	     r_cyl, i, w_r, z, j, w_z, rho);
   #endif
 
@@ -1471,4 +1455,40 @@ double EnzoInitialIsolatedGalaxy::InterpolateEquilibriumDensityTable(double r_cy
   }
 
   return rho;
+}
+
+double EnzoInitialIsolatedGalaxy::InterpolateEquilibriumVcircTable(double r_cyl, double z)
+{
+  //
+  // Interpolate the circular velocity from the read-in table. 
+  //
+  double vcirc;
+
+  double w_r =   r_cyl/(this->gas_disk_zones_r[1] - this->gas_disk_zones_r[0]);
+  double w_z = fabs(z)/(this->gas_disk_zones_z[1] - this->gas_disk_zones_z[0]);
+
+  // integer parts of coordinates divided by zone widths
+  int i = w_r;
+  int j = w_z;
+
+  // interpolation weights are given by remainders
+  w_r = w_r - i;
+  w_z = w_z - j;
+
+  if (i+1 < this->gas_disk_nr && j+1 < this->gas_disk_nz) { 
+    vcirc = (1.0 - w_r)*(1.0 - w_z) * this->gas_disk_vcirc[i][j] +
+	    (1.0 - w_r)* w_z        * this->gas_disk_vcirc[i][j+1] +
+	     w_r       *(1.0 - w_z) * this->gas_disk_vcirc[i+1][j] +
+	     w_r       * w_z        * this->gas_disk_vcirc[i+1][j+1];
+
+  #ifdef DEBUG_DISK3
+    CkPrintf("InitialIsolatedGalaxy -- r_cyl=%e, i=%d, w_r=%f, z=%e, j=%d, w_z=%f, vcirc=%e\n",
+	     r_cyl, i, w_r, z, j, w_z, vcirc);
+  #endif
+
+  } else {
+    vcirc = 0.0;
+  }
+
+  return vcirc;
 }
