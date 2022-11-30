@@ -33,7 +33,7 @@
 
 //----------------------------------------------------------------------
 #define DEBUG_PERFORMANCE
-//#define DEBUG_DISK3
+#define DEBUG_DISK4
 //----------------------------------------------------------------------
 
 // convenience flag when initializing using MakeDiskGalaxy gas particles
@@ -545,6 +545,14 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
 
   // Get Fields
   enzo_float * d           = (enzo_float *) field.values ("density");
+  enzo_float * dt          = field.is_field("density_total") ? 
+                             (enzo_float *) field.values ("density_total") : NULL;
+  enzo_float * dp          = field.is_field("density_particle") ? 
+                             (enzo_float *) field.values ("density_particle") : NULL;
+  enzo_float * dpa         = field.is_field("density_particle_accumulate") ? 
+                             (enzo_float *) field.values ("density_particle_accumulate") : NULL;
+  enzo_float * dg          = field.is_field("density_gas") ? 
+                             (enzo_float *) field.values ("density_gas") : NULL;
   enzo_float * p           = field.is_field("pressure") ?
                              (enzo_float *) field.values ("pressure") : NULL;
   enzo_float * a3[3]       = { (enzo_float *) field.values("acceleration_x"),
@@ -558,6 +566,11 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
   enzo_float * ge          = (enzo_float *) field.values("internal_energy");
   enzo_float * pot         = (enzo_float *) field.values("potential");
 
+  // avoid confusion with x coordinate
+  enzo_float * xf          = field.is_field("X") ?
+                             (enzo_float *) field.values ("X") : NULL;
+  enzo_float * bf          = field.is_field("B") ?
+                             (enzo_float *) field.values ("B") : NULL;
   enzo_float * metal       = field.is_field("metal_density") ?
                              (enzo_float *) field.values("metal_density") : NULL;
 
@@ -575,8 +588,8 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
   double scale_height_cgs =  this->scale_height_ * enzo_units->length();
 
   #ifdef DEBUG_DISK 
-    CkPrintf("InitialIsolatedGalaxy -- r_s=%e, z_s=%e, rho_zero=%e, mu=%f, e=%e\n",
-	     scale_length_cgs, scale_height_cgs, rho_zero * enzo_units->density(), 
+    CkPrintf("InitialIsolatedGalaxy -- unit=%e, r_s=%e, z_s=%e, rho_zero=%e, mu=%f, e=%e\n",
+	     enzo_units->length(), scale_length_cgs, scale_height_cgs, rho_zero * enzo_units->density(), 
 	     this->mu_, disk_gas_energy * pow(enzo_units->velocity(), 2));
   #endif
   
@@ -589,7 +602,15 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
         te[i]  = halo_gas_energy;
         p[i]   = (this->gamma_ - 1.0) * te[i] * d[i];
 
+        // assume no particles at this point
+        if (dg)  dg[i]  = this->uniform_density_;
+	if (dt)  dt[i]  = this->uniform_density_;
+	if (dp)  dp[i]  = 0.0;
+	if (dpa) dpa[i] = 0.0;
+
         if(pot) pot[i] = 0.0;
+        if(xf)  xf[i]  = 0.0;
+        if(bf)  bf[i]  = 0.0;
 
         if (this->dual_energy_)
         {
@@ -641,6 +662,8 @@ void EnzoInitialIsolatedGalaxy::InitializeEquilibriumGasDistribution(Block * blo
             (radius < this->gas_halo_radius_*enzo_units->length())){
           // in the halo, set the halo properties
           d[i]  = this->gas_halo_density_;
+          if (dg) dg[i]  = this->gas_halo_density_;
+          if (dt) dt[i]  = this->gas_halo_density_;
           te[i] = halo_gas_energy;
           p[i]  = (this->gamma_ - 1.0) * te[i] * d[i];
 
@@ -1203,7 +1226,6 @@ void EnzoInitialIsolatedGalaxy::ReadParticlesFromFile(const int& nl,
     mu = 1.0;
   }
 
-
   while(inFile >>
         position[0][i] >> position[1][i] >> position[2][i] >>
         velocity[0][i] >> velocity[1][i] >> velocity[2][i] >>
@@ -1215,17 +1237,28 @@ void EnzoInitialIsolatedGalaxy::ReadParticlesFromFile(const int& nl,
     // velocities in km / s
     // mass in Msun
 
-
-
     for (int dim = 0; dim < cello::rank(); dim++){
 
       position[dim][i] = position[dim][i] * lu  /
                                enzo_units->length() + this->center_position_[dim];
-      velocity[dim][i] = velocity[dim][i] * 1000.0 /
+      velocity[dim][i] = velocity[dim][i] * 1.0e5 /   // km/s -> cm/s
                                enzo_units->velocity();
     }
 
     mass[i]          = mass[i] * mu;
+
+  #ifdef DEBUG_DISK4
+    CkPrintf("InitialIsolatedGalaxy -- x=%f, y=%f, z=%f, vx=%f, vy=%f, vz=%f, m=%e\n",
+	     position[0][i], position[1][i], position[2][i],
+	     velocity[0][i], velocity[1][i], velocity[2][i],
+             mass[i]);
+  #endif
+    
+    ASSERT("EnzoInitialIsolatedGalaxy",
+           "Particle position outside of domain",
+	   position[0][i] >= 0 && position[0][i] <= 1 &&  
+	   position[1][i] >= 0 && position[1][i] <= 1 &&
+	   position[2][i] >= 0 && position[2][i] <= 1);
 
     i++;
   }
@@ -1386,7 +1419,7 @@ void EnzoInitialIsolatedGalaxy::ReadInEquilibriumDiskData(void)
     }
 
     this->gas_disk_log_rho[i][j] = log(rho); // density scaled by rho_zero
-    this->gas_disk_vcirc[i][j] = 1e2*vcirc; // to cgs
+    this->gas_disk_vcirc[i][j] = 1.0e2*vcirc; // to cgs
 
   #ifdef DEBUG_DISK2
     CkPrintf("InitialIsolatedGalaxy -- i=%d, r=%f, j=%d, z=%f, %f, %e\n",
